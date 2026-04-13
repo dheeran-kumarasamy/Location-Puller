@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Share Your Location</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+    }
+    .container {
+      background: rgba(255,255,255,0.08);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 20px;
+      padding: 40px;
+      max-width: 450px;
+      width: 90%;
+      text-align: center;
+    }
+    .icon { font-size: 3rem; margin-bottom: 15px; }
+    h1 { font-size: 1.5rem; margin-bottom: 10px; }
+    p.subtitle { color: rgba(255,255,255,0.6); margin-bottom: 30px; font-size: 0.95rem; line-height: 1.5; }
+    .btn-yes {
+      background: linear-gradient(135deg, #00b09b, #96c93d);
+      color: #fff;
+      border: none;
+      padding: 16px 50px;
+      font-size: 1.2rem;
+      font-weight: 600;
+      border-radius: 14px;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      margin: 8px;
+    }
+    .btn-yes:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,176,155,0.4); }
+    .btn-no {
+      background: rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.7);
+      border: 1px solid rgba(255,255,255,0.2);
+      padding: 12px 36px;
+      font-size: 1rem;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+      margin: 8px;
+    }
+    .btn-no:hover { background: rgba(255,255,255,0.2); }
+    .status {
+      margin-top: 25px;
+      padding: 15px;
+      border-radius: 10px;
+      display: none;
+      font-size: 0.95rem;
+    }
+    .status.success {
+      background: rgba(0,176,155,0.2);
+      border: 1px solid rgba(0,176,155,0.4);
+      color: #96c93d;
+      display: block;
+    }
+    .status.error {
+      background: rgba(255,71,87,0.2);
+      border: 1px solid rgba(255,71,87,0.4);
+      color: #ff4757;
+      display: block;
+    }
+    .status.loading {
+      background: rgba(102,126,234,0.2);
+      border: 1px solid rgba(102,126,234,0.4);
+      color: #a8d8ff;
+      display: block;
+    }
+    .declined {
+      color: rgba(255,255,255,0.5);
+      margin-top: 20px;
+      font-size: 0.9rem;
+      display: none;
+    }
+    .buttons { display: flex; justify-content: center; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="icon">📍</div>
+    <h1>Location Request</h1>
+    <p class="subtitle">Someone has requested your location. Would you like to share it?</p>
+
+    <div class="buttons" id="buttons">
+      <button class="btn-yes" onclick="shareLocation()">Yes, Share</button>
+      <button class="btn-no" onclick="decline()">No Thanks</button>
+    </div>
+
+    <div class="status" id="status"></div>
+    <p class="declined" id="declined">You chose not to share your location. You can close this page.</p>
+  </div>
+
+  <script>
+    const linkId = window.location.pathname.split('/').pop();
+
+    function shareLocation() {
+      const status = document.getElementById('status');
+      status.className = 'status loading';
+      status.textContent = 'Getting your location...';
+
+      document.getElementById('buttons').style.display = 'none';
+
+      if (!navigator.geolocation) {
+        status.className = 'status error';
+        status.textContent = 'Geolocation is not supported by your browser.';
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const { latitude, longitude, accuracy } = position.coords;
+
+          try {
+            const res = await fetch(`/api/location/${linkId}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ latitude, longitude, accuracy }),
+            });
+
+            if (res.ok) {
+              status.className = 'status success';
+              status.textContent = 'Location shared successfully! You can close this page.';
+            } else {
+              status.className = 'status error';
+              status.textContent = 'This link is invalid or has expired.';
+            }
+          } catch (err) {
+            status.className = 'status error';
+            status.textContent = 'Failed to send location. Please try again.';
+          }
+        },
+        (error) => {
+          status.className = 'status error';
+          switch (error.code) {
+            case error.PERMISSION_DENIED:
+              status.textContent = 'Location permission denied. Please enable location access and try again.';
+              break;
+            case error.POSITION_UNAVAILABLE:
+              status.textContent = 'Location information is unavailable.';
+              break;
+            case error.TIMEOUT:
+              status.textContent = 'Location request timed out. Please try again.';
+              break;
+            default:
+              status.textContent = 'An unknown error occurred.';
+          }
+          document.getElementById('buttons').style.display = 'flex';
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
+    }
+
+    function decline() {
+      document.getElementById('buttons').style.display = 'none';
+      document.getElementById('declined').style.display = 'block';
+    }
+  </script>
+</body>
+</html>

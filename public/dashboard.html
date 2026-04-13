@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Location Dashboard</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      color: #fff;
+      padding: 40px 20px;
+    }
+    .container {
+      background: rgba(255,255,255,0.08);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 20px;
+      padding: 40px;
+      max-width: 600px;
+      width: 100%;
+    }
+    h1 { font-size: 1.5rem; margin-bottom: 5px; }
+    .link-id { color: rgba(255,255,255,0.4); font-size: 0.85rem; margin-bottom: 20px; }
+    .refresh-btn {
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.2);
+      padding: 10px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: background 0.2s;
+      margin-bottom: 20px;
+    }
+    .refresh-btn:hover { background: rgba(255,255,255,0.2); }
+    .no-data {
+      text-align: center;
+      color: rgba(255,255,255,0.4);
+      padding: 40px 0;
+      font-size: 0.95rem;
+    }
+    .location-card {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px;
+      padding: 18px;
+      margin-bottom: 12px;
+    }
+    .location-card .time {
+      color: rgba(255,255,255,0.4);
+      font-size: 0.8rem;
+      margin-bottom: 10px;
+    }
+    .coords {
+      font-size: 1.05rem;
+      color: #a8d8ff;
+      margin-bottom: 8px;
+    }
+    .accuracy { color: rgba(255,255,255,0.5); font-size: 0.85rem; }
+    .map-link {
+      display: inline-block;
+      margin-top: 10px;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: #fff;
+      text-decoration: none;
+      padding: 8px 18px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .map-link:hover { transform: translateY(-1px); box-shadow: 0 5px 15px rgba(102,126,234,0.3); }
+    .auto-refresh {
+      color: rgba(255,255,255,0.3);
+      font-size: 0.8rem;
+      text-align: center;
+      margin-top: 15px;
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(0,176,155,0.2);
+      color: #96c93d;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      margin-left: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Location Dashboard</h1>
+    <p class="link-id">Link ID: <span id="linkId"></span></p>
+
+    <button class="refresh-btn" onclick="loadLocations()">Refresh</button>
+
+    <div id="locations">
+      <div class="no-data">Waiting for someone to share their location...</div>
+    </div>
+
+    <p class="auto-refresh">Auto-refreshes every 5 seconds</p>
+  </div>
+
+  <script>
+    const linkId = window.location.pathname.split('/').pop();
+    document.getElementById('linkId').textContent = linkId;
+
+    async function loadLocations() {
+      try {
+        const res = await fetch(`/api/locations/${linkId}`);
+        if (!res.ok) {
+          document.getElementById('locations').innerHTML =
+            '<div class="no-data">Link not found or expired.</div>';
+          return;
+        }
+
+        const data = await res.json();
+        const container = document.getElementById('locations');
+
+        if (data.locations.length === 0) {
+          container.innerHTML = '<div class="no-data">Waiting for someone to share their location...</div>';
+          return;
+        }
+
+        container.innerHTML = data.locations.map((loc, i) => {
+          const time = new Date(loc.timestamp).toLocaleString();
+          const mapsUrl = `https://www.google.com/maps?q=${loc.latitude},${loc.longitude}`;
+          return `
+            <div class="location-card">
+              <div class="time">#${i + 1} &mdash; ${time}</div>
+              <div class="coords">
+                Lat: ${loc.latitude.toFixed(6)}, Lng: ${loc.longitude.toFixed(6)}
+              </div>
+              <div class="accuracy">Accuracy: ~${Math.round(loc.accuracy)} meters</div>
+              <a class="map-link" href="${mapsUrl}" target="_blank" rel="noopener">Open in Google Maps</a>
+            </div>
+          `;
+        }).join('');
+      } catch (err) {
+        console.error('Failed to load locations:', err);
+      }
+    }
+
+    loadLocations();
+    setInterval(loadLocations, 5000);
+  </script>
+</body>
+</html>
