@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/track/(.*)",
+      "destination": "/share.html"
+    },
+    {
+      "source": "/dashboard/(.*)",
+      "destination": "/dashboard.html"
+    }
+  ]
+}

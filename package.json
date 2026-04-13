@@ -1,10 +1,11 @@
 {
-  "name": "test",
+  "name": "location-puller",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "vercel-build": "echo Vercel build complete",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -12,6 +13,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@upstash/redis": "^1.37.0",
     "express": "^5.2.1",
     "uuid": "^13.0.0"
   }
