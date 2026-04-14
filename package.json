@@ -14,7 +14,6 @@
   "type": "commonjs",
   "dependencies": {
     "@upstash/redis": "^1.37.0",
-    "express": "^5.2.1",
-    "uuid": "^13.0.0"
+    "express": "^5.2.1"
   }
 }

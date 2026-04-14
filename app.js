@@ -1,6 +1,6 @@
 const express = require("express");
 const path = require("path");
-const { v4: uuidv4 } = require("uuid");
+const crypto = require("crypto");
 const { Redis } = require("@upstash/redis");
 
 const app = express();
@@ -52,7 +52,7 @@ app.get("/api/health", (req, res) => {
 
 app.post("/api/create-link", async (req, res) => {
   try {
-    const linkId = uuidv4().slice(0, 8);
+    const linkId = crypto.randomUUID().slice(0, 8);
     await saveTrackingRecord(linkId, {
       createdAt: new Date().toISOString(),
       locations: [],
