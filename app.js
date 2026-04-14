@@ -1,5 +1,6 @@
 const express = require("express");
 const path = require("path");
+const fs = require("fs");
 const { Redis } = require("@upstash/redis");
 
 const app = express();
@@ -8,6 +9,8 @@ const trackingLinks = new Map();
 const FIXED_LINK_ID = process.env.FIXED_LINK_ID || "live-location";
 const ANDROID_APK_URL = process.env.ANDROID_APK_URL || "";
 const IOS_IPA_URL = process.env.IOS_IPA_URL || "";
+const LOCAL_ANDROID_APK_PATH = path.join(publicDir, "downloads", "app.apk");
+const LOCAL_IOS_IPA_PATH = path.join(publicDir, "downloads", "app.ipa");
 
 const hasRedisConfig = Boolean(
   process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
@@ -68,11 +71,18 @@ app.get("/api/health", (req, res) => {
 });
 
 app.get("/api/config", (req, res) => {
+  const fallbackAndroidUrl = fs.existsSync(LOCAL_ANDROID_APK_PATH)
+    ? "/downloads/app.apk"
+    : "";
+  const fallbackIosUrl = fs.existsSync(LOCAL_IOS_IPA_PATH)
+    ? "/downloads/app.ipa"
+    : "";
+
   res.json({
     fixedLinkId: FIXED_LINK_ID,
     downloads: {
-      androidApkUrl: ANDROID_APK_URL,
-      iosIpaUrl: IOS_IPA_URL,
+      androidApkUrl: ANDROID_APK_URL || fallbackAndroidUrl,
+      iosIpaUrl: IOS_IPA_URL || fallbackIosUrl,
     },
   });
 });

@@ -35,6 +35,13 @@ Set these optional environment variables in Vercel:
 - `ANDROID_APK_URL` (full URL to your Android `.apk` file)
 - `IOS_IPA_URL` (full URL to your iOS `.ipa` file)
 
+Alternative to env URLs:
+
+- Place Android package at `public/downloads/app.apk`
+- Place iOS package at `public/downloads/app.ipa`
+
+If these files exist, the app will automatically expose them as download links even without env variables.
+
 The landing page uses device detection:
 
 - Android users see the APK link
