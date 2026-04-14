@@ -127,13 +127,28 @@
     .stop-btn:hover {
       background: rgba(255,71,87,0.25);
     }
+    .maps-btn {
+      margin-top: 14px;
+      display: inline-block;
+      text-decoration: none;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: #fff;
+      border: none;
+      padding: 12px 18px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 0.95rem;
+    }
+    .maps-btn:hover {
+      opacity: 0.92;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="icon">📍</div>
     <h1>Location Request</h1>
-    <p class="subtitle">Someone has requested your live location. If you agree, your browser will keep sending updated coordinates until you stop sharing or close this page.</p>
+    <p class="subtitle">Someone has requested your Google Maps live location. If you agree, we will open Google Maps and guide you to share your live location.</p>
 
     <div class="buttons" id="buttons">
       <button class="btn-yes" onclick="shareLocation()">Yes, Share</button>
@@ -144,14 +159,16 @@
     <div class="live-panel" id="livePanel">
       <div class="live-title">
         <span class="live-dot"></span>
-        <span>Live sharing is active</span>
+        <span>Open Google Maps and share live location</span>
       </div>
       <div class="live-meta">
-        <div>Updates sent: <strong id="updateCount">0</strong></div>
-        <div>Last update: <strong id="lastUpdated">Waiting for first location...</strong></div>
-        <div>Current accuracy: <strong id="currentAccuracy">--</strong></div>
+        <div>1. Tap your profile icon in Google Maps</div>
+        <div>2. Choose <strong>Location sharing</strong></div>
+        <div>3. Select duration and share your live location</div>
+        <div>4. Send the generated Google Maps sharing link to the requester</div>
       </div>
-      <button class="stop-btn" onclick="stopSharing()">Stop Sharing</button>
+      <a id="openMapsBtn" class="maps-btn" href="#" target="_blank" rel="noopener">Open Google Maps</a>
+      <button class="stop-btn" onclick="resetChoice()">Back</button>
     </div>
     <p class="declined" id="declined">You chose not to share your location. You can close this page.</p>
   </div>
@@ -160,8 +177,7 @@
     const linkId = window.location.pathname.split('/').pop();
     const status = document.getElementById('status');
     const livePanel = document.getElementById('livePanel');
-    let watchId = null;
-    let updatesSent = 0;
+    const openMapsBtn = document.getElementById('openMapsBtn');
 
     async function sendLocation(position) {
       const { latitude, longitude, accuracy } = position.coords;
@@ -176,18 +192,12 @@
         throw new Error('invalid-link');
       }
 
-      updatesSent += 1;
-      status.className = 'status success';
-      status.textContent = 'Live location is being shared.';
-      livePanel.classList.add('active');
-      document.getElementById('updateCount').textContent = updatesSent;
-      document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString();
-      document.getElementById('currentAccuracy').textContent = `~${Math.round(accuracy)} meters`;
+      return { latitude, longitude, accuracy };
     }
 
     function shareLocation() {
       status.className = 'status loading';
-      status.textContent = 'Starting live location sharing...';
+      status.textContent = 'Getting your location and opening Google Maps...';
 
       document.getElementById('buttons').style.display = 'none';
       document.getElementById('declined').style.display = 'none';
@@ -199,25 +209,34 @@
         return;
       }
 
-      if (watchId !== null) {
-        return;
-      }
+      const mapsWindow = window.open('about:blank', '_blank');
 
-      watchId = navigator.geolocation.watchPosition(
+      navigator.geolocation.getCurrentPosition(
         async (position) => {
           try {
-            await sendLocation(position);
+            const { latitude, longitude } = await sendLocation(position);
+            const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
+            openMapsBtn.href = mapsUrl;
+            livePanel.classList.add('active');
+            status.className = 'status success';
+            status.textContent = 'Google Maps is ready. Continue in Maps to share your live location.';
+
+            if (mapsWindow && !mapsWindow.closed) {
+              mapsWindow.location.href = mapsUrl;
+            }
           } catch (err) {
-            stopSharing(false);
             status.className = 'status error';
             status.textContent = err.message === 'invalid-link'
               ? 'This link is invalid or has expired.'
-              : 'Failed to send live location. Please try again.';
+              : 'Failed to start location sharing. Please try again.';
             document.getElementById('buttons').style.display = 'flex';
+
+            if (mapsWindow && !mapsWindow.closed) {
+              mapsWindow.close();
+            }
           }
         },
         (error) => {
-          stopSharing(false);
           status.className = 'status error';
           switch (error.code) {
             case error.PERMISSION_DENIED:
@@ -233,34 +252,30 @@
               status.textContent = 'An unknown error occurred.';
           }
           document.getElementById('buttons').style.display = 'flex';
+
+          if (mapsWindow && !mapsWindow.closed) {
+            mapsWindow.close();
+          }
         },
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     }
 
-    function stopSharing(showMessage = true) {
-      if (watchId !== null) {
-        navigator.geolocation.clearWatch(watchId);
-        watchId = null;
-      }
-
-      livePanel.classList.remove('active');
-
-      if (showMessage) {
-        status.className = 'status success';
-        status.textContent = 'Live location sharing stopped.';
-        document.getElementById('buttons').style.display = 'flex';
-      }
-    }
-
     function decline() {
-      stopSharing(false);
       document.getElementById('buttons').style.display = 'none';
       document.getElementById('declined').style.display = 'block';
     }
 
+    function resetChoice() {
+      livePanel.classList.remove('active');
+      status.className = 'status';
+      status.textContent = '';
+      document.getElementById('buttons').style.display = 'flex';
+      document.getElementById('declined').style.display = 'none';
+    }
+
     window.addEventListener('beforeunload', () => {
-      stopSharing(false);
+      livePanel.classList.remove('active');
     });
   </script>
 </body>
