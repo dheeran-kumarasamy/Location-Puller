@@ -6,6 +6,7 @@ const { Redis } = require("@upstash/redis");
 const app = express();
 const publicDir = path.join(__dirname, "public");
 const trackingLinks = new Map();
+const FIXED_LINK_ID = process.env.FIXED_LINK_ID || "live-location";
 
 const hasRedisConfig = Boolean(
   process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
@@ -34,6 +35,21 @@ async function getTrackingRecord(linkId) {
   return trackingLinks.get(linkId) || null;
 }
 
+async function ensureTrackingRecord(linkId) {
+  const existingRecord = await getTrackingRecord(linkId);
+  if (existingRecord) {
+    return existingRecord;
+  }
+
+  const newRecord = {
+    createdAt: new Date().toISOString(),
+    locations: [],
+  };
+
+  await saveTrackingRecord(linkId, newRecord);
+  return newRecord;
+}
+
 app.use(express.json());
 
 app.use((req, res, next) => {
@@ -52,11 +68,8 @@ app.get("/api/health", (req, res) => {
 
 app.post("/api/create-link", async (req, res) => {
   try {
-    const linkId = crypto.randomUUID().slice(0, 8);
-    await saveTrackingRecord(linkId, {
-      createdAt: new Date().toISOString(),
-      locations: [],
-    });
+    const linkId = FIXED_LINK_ID;
+    await ensureTrackingRecord(linkId);
 
     res.json({ linkId });
   } catch (error) {
@@ -69,7 +82,9 @@ app.post("/api/location/:linkId", async (req, res) => {
   try {
     const { linkId } = req.params;
     const { latitude, longitude, accuracy } = req.body;
-    const trackingRecord = await getTrackingRecord(linkId);
+    const trackingRecord = linkId === FIXED_LINK_ID
+      ? await ensureTrackingRecord(linkId)
+      : await getTrackingRecord(linkId);
 
     if (!trackingRecord) {
       return res.status(404).json({ error: "Link not found" });
@@ -96,7 +111,9 @@ app.post("/api/location/:linkId", async (req, res) => {
 app.get("/api/locations/:linkId", async (req, res) => {
   try {
     const { linkId } = req.params;
-    const trackingRecord = await getTrackingRecord(linkId);
+    const trackingRecord = linkId === FIXED_LINK_ID
+      ? await ensureTrackingRecord(linkId)
+      : await getTrackingRecord(linkId);
 
     if (!trackingRecord) {
       return res.status(404).json({ error: "Link not found" });

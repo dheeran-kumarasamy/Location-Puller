@@ -38,7 +38,7 @@
       transition: transform 0.2s, box-shadow 0.2s;
     }
     .btn:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(102,126,234,0.4); }
-    .result { margin-top: 25px; display: none; }
+    .result { margin-top: 25px; }
     .link-box {
       background: rgba(0,0,0,0.3);
       border: 1px solid rgba(255,255,255,0.2);
@@ -81,20 +81,18 @@
 <body>
   <div class="container">
     <h1>Location Link Generator</h1>
-    <p class="subtitle">Generate a link to request someone's Google Maps live location with clear consent</p>
+    <p class="subtitle">Generate a link to request someone's live location with clear consent</p>
 
     <ol class="steps">
-      <li>Click the button below to generate a unique link</li>
-      <li>Send the link to the person</li>
-      <li>They click "Yes" to open Google Maps</li>
-      <li>They share live location from Google Maps</li>
-      <li>View updates on your dashboard</li>
+      <li>Use the fixed link below</li>
+      <li>Send the same link to the person every time</li>
+      <li>They click "Yes" to start live sharing</li>
+      <li>They can stop sharing any time from the same page</li>
+      <li>View live updates on your dashboard</li>
     </ol>
 
-    <button class="btn" onclick="generateLink()">Generate Link</button>
-
     <div class="result" id="result">
-      <p style="margin-bottom: 10px; font-size: 0.85rem; color: rgba(255,255,255,0.5);">Send this link to the person:</p>
+      <p style="margin-bottom: 10px; font-size: 0.85rem; color: rgba(255,255,255,0.5);">Send this fixed link to the person:</p>
       <div class="link-box" id="shareLink"></div>
       <button class="copy-btn" onclick="copyLink()">Copy Link</button>
       <br>
@@ -103,19 +101,14 @@
   </div>
 
   <script>
-    let currentLinkId = null;
+    const fixedLinkId = 'live-location';
 
-    async function generateLink() {
-      const res = await fetch('/api/create-link', { method: 'POST' });
-      const data = await res.json();
-      currentLinkId = data.linkId;
-
-      const shareUrl = `${window.location.origin}/track/${data.linkId}`;
-      const dashUrl = `${window.location.origin}/dashboard/${data.linkId}`;
+    function initializeFixedLinks() {
+      const shareUrl = `${window.location.origin}/track/${fixedLinkId}`;
+      const dashUrl = `${window.location.origin}/dashboard/${fixedLinkId}`;
 
       document.getElementById('shareLink').textContent = shareUrl;
       document.getElementById('dashLink').href = dashUrl;
-      document.getElementById('result').style.display = 'block';
     }
 
     function copyLink() {
@@ -126,6 +119,8 @@
         setTimeout(() => btn.textContent = 'Copy Link', 2000);
       });
     }
+
+    initializeFixedLinks();
   </script>
 </body>
 </html>
