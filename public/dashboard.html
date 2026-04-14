@@ -4,6 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Location Dashboard</title>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  >
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -22,7 +28,7 @@
       border: 1px solid rgba(255,255,255,0.15);
       border-radius: 20px;
       padding: 40px;
-      max-width: 600px;
+      max-width: 1100px;
       width: 100%;
     }
     h1 { font-size: 1.5rem; margin-bottom: 5px; }
@@ -47,6 +53,67 @@
     .summary-value {
       font-size: 1rem;
       color: #fff;
+    }
+    .map-shell {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 18px;
+      padding: 14px;
+      margin-bottom: 22px;
+    }
+    .map-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .map-title {
+      font-size: 1rem;
+      color: #fff;
+    }
+    .map-subtitle {
+      color: rgba(255,255,255,0.55);
+      font-size: 0.85rem;
+      margin-top: 4px;
+    }
+    .map-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .map-btn {
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.2);
+      padding: 10px 16px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    .map-btn:hover { background: rgba(255,255,255,0.18); }
+    #liveMap {
+      width: 100%;
+      height: 420px;
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .map-empty {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 420px;
+      color: rgba(255,255,255,0.45);
+      font-size: 1rem;
+      text-align: center;
+      padding: 20px;
+      background: rgba(0,0,0,0.18);
+      border-radius: 14px;
+    }
+    .leaflet-container {
+      background: #111827;
+      font-family: inherit;
     }
     .refresh-btn {
       background: rgba(255,255,255,0.1);
@@ -111,6 +178,17 @@
       font-size: 0.8rem;
       margin-left: 10px;
     }
+    @media (max-width: 768px) {
+      .container {
+        padding: 24px;
+      }
+
+      #liveMap,
+      .map-empty {
+        height: 320px;
+        min-height: 320px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -133,18 +211,125 @@
       </div>
     </div>
 
+    <div class="map-shell">
+      <div class="map-header">
+        <div>
+          <div class="map-title">Live location map</div>
+          <div class="map-subtitle">The marker moves as new positions arrive from the receiver.</div>
+        </div>
+        <div class="map-actions">
+          <button class="map-btn" onclick="focusLatestLocation()">Follow Latest</button>
+        </div>
+      </div>
+      <div id="mapState" class="map-empty">Waiting for the first live location update...</div>
+      <div id="liveMap" style="display: none;"></div>
+    </div>
+
     <button class="refresh-btn" onclick="loadLocations()">Refresh</button>
 
     <div id="locations">
       <div class="no-data">Waiting for someone to share their location...</div>
     </div>
 
-    <p class="auto-refresh">Auto-refreshes every 5 seconds</p>
+    <p class="auto-refresh">Live map updates every 3 seconds</p>
   </div>
 
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
   <script>
     const linkId = window.location.pathname.split('/').pop();
     document.getElementById('linkId').textContent = linkId;
+    let map = null;
+    let latestMarker = null;
+    let accuracyCircle = null;
+    let pathLine = null;
+    let lastRenderedCount = 0;
+
+    function ensureMap() {
+      if (map) {
+        return map;
+      }
+
+      document.getElementById('mapState').style.display = 'none';
+      const mapElement = document.getElementById('liveMap');
+      mapElement.style.display = 'block';
+
+      map = L.map('liveMap', {
+        zoomControl: true,
+        attributionControl: true,
+      }).setView([20, 78], 3);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+
+      return map;
+    }
+
+    function focusLatestLocation() {
+      if (!latestMarker || !map) {
+        return;
+      }
+
+      map.flyTo(latestMarker.getLatLng(), Math.max(map.getZoom(), 16), {
+        animate: true,
+        duration: 1.2,
+      });
+    }
+
+    function updateMap(locations) {
+      if (!locations.length) {
+        return;
+      }
+
+      const liveMap = ensureMap();
+      const coordinates = locations.map((loc) => [loc.latitude, loc.longitude]);
+      const latest = locations[locations.length - 1];
+      const latestLatLng = [latest.latitude, latest.longitude];
+
+      if (!pathLine) {
+        pathLine = L.polyline(coordinates, {
+          color: '#7c3aed',
+          weight: 4,
+          opacity: 0.9,
+        }).addTo(liveMap);
+      } else {
+        pathLine.setLatLngs(coordinates);
+      }
+
+      if (!latestMarker) {
+        latestMarker = L.marker(latestLatLng).addTo(liveMap);
+      } else {
+        latestMarker.setLatLng(latestLatLng);
+      }
+
+      latestMarker.bindPopup(`Latest location<br>${new Date(latest.timestamp).toLocaleString()}`);
+
+      if (!accuracyCircle) {
+        accuracyCircle = L.circle(latestLatLng, {
+          radius: latest.accuracy || 0,
+          color: '#38bdf8',
+          fillColor: '#38bdf8',
+          fillOpacity: 0.16,
+        }).addTo(liveMap);
+      } else {
+        accuracyCircle.setLatLng(latestLatLng);
+        accuracyCircle.setRadius(latest.accuracy || 0);
+      }
+
+      if (lastRenderedCount === 0) {
+        liveMap.fitBounds(pathLine.getBounds(), { padding: [40, 40] });
+      } else if (locations.length !== lastRenderedCount) {
+        liveMap.panTo(latestLatLng, { animate: true, duration: 1.0 });
+      }
+
+      setTimeout(() => liveMap.invalidateSize(), 0);
+      lastRenderedCount = locations.length;
+    }
 
     function getLiveStatus(lastTimestamp) {
       const ageMs = Date.now() - new Date(lastTimestamp).getTime();
@@ -171,12 +356,15 @@
           container.innerHTML = '<div class="no-data">Waiting for someone to share their location...</div>';
           document.getElementById('liveStatus').textContent = 'Waiting';
           document.getElementById('lastUpdateTime').textContent = '--';
+          document.getElementById('mapState').style.display = 'flex';
+          document.getElementById('liveMap').style.display = 'none';
           return;
         }
 
         const latest = data.locations[data.locations.length - 1];
         document.getElementById('liveStatus').textContent = getLiveStatus(latest.timestamp);
         document.getElementById('lastUpdateTime').textContent = new Date(latest.timestamp).toLocaleTimeString();
+        updateMap(data.locations);
 
         container.innerHTML = [...data.locations].reverse().map((loc, i) => {
           const time = new Date(loc.timestamp).toLocaleString();
