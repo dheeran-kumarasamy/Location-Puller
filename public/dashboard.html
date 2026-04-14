@@ -27,6 +27,27 @@
     }
     h1 { font-size: 1.5rem; margin-bottom: 5px; }
     .link-id { color: rgba(255,255,255,0.4); font-size: 0.85rem; margin-bottom: 20px; }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 22px;
+    }
+    .summary-card {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .summary-label {
+      color: rgba(255,255,255,0.55);
+      font-size: 0.8rem;
+      margin-bottom: 6px;
+    }
+    .summary-value {
+      font-size: 1rem;
+      color: #fff;
+    }
     .refresh-btn {
       background: rgba(255,255,255,0.1);
       color: #fff;
@@ -97,6 +118,21 @@
     <h1>Location Dashboard</h1>
     <p class="link-id">Link ID: <span id="linkId"></span></p>
 
+    <div class="summary">
+      <div class="summary-card">
+        <div class="summary-label">Latest status</div>
+        <div class="summary-value" id="liveStatus">Waiting</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">Updates received</div>
+        <div class="summary-value" id="totalUpdates">0</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">Last update</div>
+        <div class="summary-value" id="lastUpdateTime">--</div>
+      </div>
+    </div>
+
     <button class="refresh-btn" onclick="loadLocations()">Refresh</button>
 
     <div id="locations">
@@ -110,29 +146,44 @@
     const linkId = window.location.pathname.split('/').pop();
     document.getElementById('linkId').textContent = linkId;
 
+    function getLiveStatus(lastTimestamp) {
+      const ageMs = Date.now() - new Date(lastTimestamp).getTime();
+      return ageMs < 15000 ? 'Live now' : 'Idle';
+    }
+
     async function loadLocations() {
       try {
         const res = await fetch(`/api/locations/${linkId}`);
         if (!res.ok) {
           document.getElementById('locations').innerHTML =
             '<div class="no-data">Link not found or expired.</div>';
+          document.getElementById('liveStatus').textContent = 'Unavailable';
           return;
         }
 
         const data = await res.json();
         const container = document.getElementById('locations');
+        const totalUpdates = data.locations.length;
 
-        if (data.locations.length === 0) {
+        document.getElementById('totalUpdates').textContent = totalUpdates;
+
+        if (totalUpdates === 0) {
           container.innerHTML = '<div class="no-data">Waiting for someone to share their location...</div>';
+          document.getElementById('liveStatus').textContent = 'Waiting';
+          document.getElementById('lastUpdateTime').textContent = '--';
           return;
         }
 
-        container.innerHTML = data.locations.map((loc, i) => {
+        const latest = data.locations[data.locations.length - 1];
+        document.getElementById('liveStatus').textContent = getLiveStatus(latest.timestamp);
+        document.getElementById('lastUpdateTime').textContent = new Date(latest.timestamp).toLocaleTimeString();
+
+        container.innerHTML = [...data.locations].reverse().map((loc, i) => {
           const time = new Date(loc.timestamp).toLocaleString();
           const mapsUrl = `https://www.google.com/maps?q=${loc.latitude},${loc.longitude}`;
           return `
             <div class="location-card">
-              <div class="time">#${i + 1} &mdash; ${time}</div>
+              <div class="time">#${totalUpdates - i} &mdash; ${time}${i === 0 ? ' <span class="badge">Latest</span>' : ''}</div>
               <div class="coords">
                 Lat: ${loc.latitude.toFixed(6)}, Lng: ${loc.longitude.toFixed(6)}
               </div>
@@ -147,7 +198,7 @@
     }
 
     loadLocations();
-    setInterval(loadLocations, 5000);
+    setInterval(loadLocations, 3000);
   </script>
 </body>
 </html>

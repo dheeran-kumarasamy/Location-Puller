@@ -85,13 +85,55 @@
       display: none;
     }
     .buttons { display: flex; justify-content: center; flex-wrap: wrap; }
+    .live-panel {
+      display: none;
+      margin-top: 20px;
+      text-align: left;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 14px;
+      padding: 18px;
+    }
+    .live-panel.active { display: block; }
+    .live-title {
+      font-size: 1rem;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .live-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #32d583;
+      box-shadow: 0 0 12px rgba(50, 213, 131, 0.75);
+    }
+    .live-meta {
+      color: rgba(255,255,255,0.68);
+      font-size: 0.88rem;
+      line-height: 1.7;
+    }
+    .stop-btn {
+      margin-top: 14px;
+      background: rgba(255,71,87,0.15);
+      color: #fff;
+      border: 1px solid rgba(255,71,87,0.4);
+      padding: 12px 18px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 0.95rem;
+    }
+    .stop-btn:hover {
+      background: rgba(255,71,87,0.25);
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="icon">📍</div>
     <h1>Location Request</h1>
-    <p class="subtitle">Someone has requested your location. Would you like to share it?</p>
+    <p class="subtitle">Someone has requested your live location. If you agree, your browser will keep sending updated coordinates until you stop sharing or close this page.</p>
 
     <div class="buttons" id="buttons">
       <button class="btn-yes" onclick="shareLocation()">Yes, Share</button>
@@ -99,49 +141,83 @@
     </div>
 
     <div class="status" id="status"></div>
+    <div class="live-panel" id="livePanel">
+      <div class="live-title">
+        <span class="live-dot"></span>
+        <span>Live sharing is active</span>
+      </div>
+      <div class="live-meta">
+        <div>Updates sent: <strong id="updateCount">0</strong></div>
+        <div>Last update: <strong id="lastUpdated">Waiting for first location...</strong></div>
+        <div>Current accuracy: <strong id="currentAccuracy">--</strong></div>
+      </div>
+      <button class="stop-btn" onclick="stopSharing()">Stop Sharing</button>
+    </div>
     <p class="declined" id="declined">You chose not to share your location. You can close this page.</p>
   </div>
 
   <script>
     const linkId = window.location.pathname.split('/').pop();
+    const status = document.getElementById('status');
+    const livePanel = document.getElementById('livePanel');
+    let watchId = null;
+    let updatesSent = 0;
+
+    async function sendLocation(position) {
+      const { latitude, longitude, accuracy } = position.coords;
+
+      const res = await fetch(`/api/location/${linkId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ latitude, longitude, accuracy }),
+      });
+
+      if (!res.ok) {
+        throw new Error('invalid-link');
+      }
+
+      updatesSent += 1;
+      status.className = 'status success';
+      status.textContent = 'Live location is being shared.';
+      livePanel.classList.add('active');
+      document.getElementById('updateCount').textContent = updatesSent;
+      document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString();
+      document.getElementById('currentAccuracy').textContent = `~${Math.round(accuracy)} meters`;
+    }
 
     function shareLocation() {
-      const status = document.getElementById('status');
       status.className = 'status loading';
-      status.textContent = 'Getting your location...';
+      status.textContent = 'Starting live location sharing...';
 
       document.getElementById('buttons').style.display = 'none';
+      document.getElementById('declined').style.display = 'none';
 
       if (!navigator.geolocation) {
         status.className = 'status error';
         status.textContent = 'Geolocation is not supported by your browser.';
+        document.getElementById('buttons').style.display = 'flex';
         return;
       }
 
-      navigator.geolocation.getCurrentPosition(
+      if (watchId !== null) {
+        return;
+      }
+
+      watchId = navigator.geolocation.watchPosition(
         async (position) => {
-          const { latitude, longitude, accuracy } = position.coords;
-
           try {
-            const res = await fetch(`/api/location/${linkId}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ latitude, longitude, accuracy }),
-            });
-
-            if (res.ok) {
-              status.className = 'status success';
-              status.textContent = 'Location shared successfully! You can close this page.';
-            } else {
-              status.className = 'status error';
-              status.textContent = 'This link is invalid or has expired.';
-            }
+            await sendLocation(position);
           } catch (err) {
+            stopSharing(false);
             status.className = 'status error';
-            status.textContent = 'Failed to send location. Please try again.';
+            status.textContent = err.message === 'invalid-link'
+              ? 'This link is invalid or has expired.'
+              : 'Failed to send live location. Please try again.';
+            document.getElementById('buttons').style.display = 'flex';
           }
         },
         (error) => {
+          stopSharing(false);
           status.className = 'status error';
           switch (error.code) {
             case error.PERMISSION_DENIED:
@@ -158,14 +234,34 @@
           }
           document.getElementById('buttons').style.display = 'flex';
         },
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
       );
     }
 
+    function stopSharing(showMessage = true) {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
+
+      livePanel.classList.remove('active');
+
+      if (showMessage) {
+        status.className = 'status success';
+        status.textContent = 'Live location sharing stopped.';
+        document.getElementById('buttons').style.display = 'flex';
+      }
+    }
+
     function decline() {
+      stopSharing(false);
       document.getElementById('buttons').style.display = 'none';
       document.getElementById('declined').style.display = 'block';
     }
+
+    window.addEventListener('beforeunload', () => {
+      stopSharing(false);
+    });
   </script>
 </body>
 </html>
