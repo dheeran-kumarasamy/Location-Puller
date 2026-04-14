@@ -1,12 +1,13 @@
 const express = require("express");
 const path = require("path");
-const crypto = require("crypto");
 const { Redis } = require("@upstash/redis");
 
 const app = express();
 const publicDir = path.join(__dirname, "public");
 const trackingLinks = new Map();
 const FIXED_LINK_ID = process.env.FIXED_LINK_ID || "live-location";
+const ANDROID_APK_URL = process.env.ANDROID_APK_URL || "";
+const IOS_IPA_URL = process.env.IOS_IPA_URL || "";
 
 const hasRedisConfig = Boolean(
   process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
@@ -63,6 +64,16 @@ app.get("/api/health", (req, res) => {
   res.json({
     ok: true,
     storage: redis ? "upstash-redis" : "memory",
+  });
+});
+
+app.get("/api/config", (req, res) => {
+  res.json({
+    fixedLinkId: FIXED_LINK_ID,
+    downloads: {
+      androidApkUrl: ANDROID_APK_URL,
+      iosIpaUrl: IOS_IPA_URL,
+    },
   });
 });
 

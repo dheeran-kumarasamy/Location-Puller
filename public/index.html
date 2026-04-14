@@ -69,6 +69,33 @@
       font-size: 0.9rem;
     }
     .dashboard-link:hover { text-decoration: underline; }
+    .download-box {
+      margin-top: 18px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 10px;
+      padding: 14px;
+      text-align: left;
+    }
+    .download-title {
+      font-size: 0.9rem;
+      color: rgba(255,255,255,0.8);
+      margin-bottom: 10px;
+    }
+    .download-link {
+      display: inline-block;
+      margin-top: 6px;
+      color: #a8d8ff;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    .download-link:hover { text-decoration: underline; }
+    .download-note {
+      color: rgba(255,255,255,0.55);
+      font-size: 0.82rem;
+      margin-top: 8px;
+      line-height: 1.45;
+    }
     .steps { text-align: left; margin: 20px 0; }
     .steps li {
       color: rgba(255,255,255,0.7);
@@ -97,18 +124,71 @@
       <button class="copy-btn" onclick="copyLink()">Copy Link</button>
       <br>
       <a class="dashboard-link" id="dashLink" href="#" target="_blank">Open Dashboard to view received locations</a>
+
+      <div class="download-box">
+        <div class="download-title">Mobile app download</div>
+        <a class="download-link" id="platformDownloadLink" href="#" target="_blank" style="display: none;"></a>
+        <div class="download-note" id="downloadNote">Checking device platform...</div>
+      </div>
     </div>
   </div>
 
   <script>
-    const fixedLinkId = 'live-location';
+    const platformDownloadLink = document.getElementById('platformDownloadLink');
+    const downloadNote = document.getElementById('downloadNote');
 
-    function initializeFixedLinks() {
+    function detectPlatform() {
+      const ua = navigator.userAgent || '';
+      if (/android/i.test(ua)) {
+        return 'android';
+      }
+      if (/iphone|ipad|ipod/i.test(ua)) {
+        return 'ios';
+      }
+      return 'desktop';
+    }
+
+    function renderDownloadLink(downloads) {
+      const platform = detectPlatform();
+      const androidUrl = downloads.androidApkUrl || '';
+      const iosUrl = downloads.iosIpaUrl || '';
+
+      if (platform === 'android' && androidUrl) {
+        platformDownloadLink.href = androidUrl;
+        platformDownloadLink.textContent = 'Download Android APK';
+        platformDownloadLink.style.display = 'inline-block';
+        downloadNote.textContent = 'Detected Android device.';
+        return;
+      }
+
+      if (platform === 'ios' && iosUrl) {
+        platformDownloadLink.href = iosUrl;
+        platformDownloadLink.textContent = 'Download iPhone IPA';
+        platformDownloadLink.style.display = 'inline-block';
+        downloadNote.textContent = 'Detected iPhone/iPad device.';
+        return;
+      }
+
+      if (platform === 'android') {
+        downloadNote.textContent = 'Android device detected, but APK URL is not configured yet.';
+      } else if (platform === 'ios') {
+        downloadNote.textContent = 'iPhone/iPad detected, but IPA URL is not configured yet.';
+      } else {
+        downloadNote.textContent = 'Open this page on Android or iPhone to get the platform-specific app link.';
+      }
+    }
+
+    async function initializeFixedLinks() {
+      const configResponse = await fetch('/api/config');
+      const config = await configResponse.json();
+      const fixedLinkId = config.fixedLinkId || 'live-location';
+
       const shareUrl = `${window.location.origin}/track/${fixedLinkId}`;
       const dashUrl = `${window.location.origin}/dashboard/${fixedLinkId}`;
 
       document.getElementById('shareLink').textContent = shareUrl;
       document.getElementById('dashLink').href = dashUrl;
+      renderDownloadLink(config.downloads || {});
     }
 
     function copyLink() {
@@ -120,7 +200,9 @@
       });
     }
 
-    initializeFixedLinks();
+    initializeFixedLinks().catch(() => {
+      downloadNote.textContent = 'Failed to load app configuration. Please refresh and try again.';
+    });
   </script>
 </body>
 </html>

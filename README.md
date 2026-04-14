@@ -27,6 +27,20 @@ Serverless functions do not keep in-memory data between requests. For production
 
 Without those variables, the app falls back to in-memory storage for local development only.
 
+### Fixed link and mobile package links
+
+Set these optional environment variables in Vercel:
+
+- `FIXED_LINK_ID` (default: `live-location`)
+- `ANDROID_APK_URL` (full URL to your Android `.apk` file)
+- `IOS_IPA_URL` (full URL to your iOS `.ipa` file)
+
+The landing page uses device detection:
+
+- Android users see the APK link
+- iPhone/iPad users see the IPA link
+- Desktop users see a message to open the page on mobile
+
 ### Vercel routes
 
 - `/` → landing page
