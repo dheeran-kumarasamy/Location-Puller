@@ -90,6 +90,18 @@
       font-size: 0.9rem;
     }
     .download-link:hover { text-decoration: underline; }
+    .download-item {
+      margin-top: 8px;
+    }
+    .download-label {
+      color: rgba(255,255,255,0.7);
+      font-size: 0.84rem;
+      margin-right: 8px;
+    }
+    .download-missing {
+      color: rgba(255,255,255,0.45);
+      font-size: 0.84rem;
+    }
     .download-note {
       color: rgba(255,255,255,0.55);
       font-size: 0.82rem;
@@ -126,55 +138,51 @@
       <a class="dashboard-link" id="dashLink" href="#" target="_blank">Open Dashboard to view received locations</a>
 
       <div class="download-box">
-        <div class="download-title">Mobile app download</div>
-        <a class="download-link" id="platformDownloadLink" href="#" target="_blank" style="display: none;"></a>
-        <div class="download-note" id="downloadNote">Checking device platform...</div>
+        <div class="download-title">Mobile app downloads</div>
+        <div class="download-item">
+          <span class="download-label">Android (APK):</span>
+          <a class="download-link" id="androidDownloadLink" href="#" target="_blank" style="display: none;">Download APK</a>
+          <span class="download-missing" id="androidMissing">Not configured</span>
+        </div>
+        <div class="download-item">
+          <span class="download-label">iPhone (IPA):</span>
+          <a class="download-link" id="iosDownloadLink" href="#" target="_blank" style="display: none;">Download IPA</a>
+          <span class="download-missing" id="iosMissing">Not configured</span>
+        </div>
+        <div class="download-note" id="downloadNote">Configure `ANDROID_APK_URL` and `IOS_IPA_URL` to enable both downloads.</div>
       </div>
     </div>
   </div>
 
   <script>
-    const platformDownloadLink = document.getElementById('platformDownloadLink');
+    const androidDownloadLink = document.getElementById('androidDownloadLink');
+    const iosDownloadLink = document.getElementById('iosDownloadLink');
+    const androidMissing = document.getElementById('androidMissing');
+    const iosMissing = document.getElementById('iosMissing');
     const downloadNote = document.getElementById('downloadNote');
 
-    function detectPlatform() {
-      const ua = navigator.userAgent || '';
-      if (/android/i.test(ua)) {
-        return 'android';
-      }
-      if (/iphone|ipad|ipod/i.test(ua)) {
-        return 'ios';
-      }
-      return 'desktop';
-    }
-
     function renderDownloadLink(downloads) {
-      const platform = detectPlatform();
       const androidUrl = downloads.androidApkUrl || '';
       const iosUrl = downloads.iosIpaUrl || '';
 
-      if (platform === 'android' && androidUrl) {
-        platformDownloadLink.href = androidUrl;
-        platformDownloadLink.textContent = 'Download Android APK';
-        platformDownloadLink.style.display = 'inline-block';
-        downloadNote.textContent = 'Detected Android device.';
-        return;
+      if (androidUrl) {
+        androidDownloadLink.href = androidUrl;
+        androidDownloadLink.style.display = 'inline-block';
+        androidMissing.style.display = 'none';
       }
 
-      if (platform === 'ios' && iosUrl) {
-        platformDownloadLink.href = iosUrl;
-        platformDownloadLink.textContent = 'Download iPhone IPA';
-        platformDownloadLink.style.display = 'inline-block';
-        downloadNote.textContent = 'Detected iPhone/iPad device.';
-        return;
+      if (iosUrl) {
+        iosDownloadLink.href = iosUrl;
+        iosDownloadLink.style.display = 'inline-block';
+        iosMissing.style.display = 'none';
       }
 
-      if (platform === 'android') {
-        downloadNote.textContent = 'Android device detected, but APK URL is not configured yet.';
-      } else if (platform === 'ios') {
-        downloadNote.textContent = 'iPhone/iPad detected, but IPA URL is not configured yet.';
+      if (androidUrl && iosUrl) {
+        downloadNote.textContent = 'Both APK and IPA download links are available.';
+      } else if (androidUrl || iosUrl) {
+        downloadNote.textContent = 'Only one app package is configured. Add both URLs to provide both downloads.';
       } else {
-        downloadNote.textContent = 'Open this page on Android or iPhone to get the platform-specific app link.';
+        downloadNote.textContent = 'Configure `ANDROID_APK_URL` and `IOS_IPA_URL` to enable both downloads.';
       }
     }
 
