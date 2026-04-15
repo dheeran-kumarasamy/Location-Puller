@@ -115,6 +115,19 @@
       background: #111827;
       font-family: inherit;
     }
+    .leaflet-tooltip.sender-tooltip {
+      background: rgba(15, 12, 41, 0.9);
+      border: 1px solid rgba(255,255,255,0.25);
+      color: #fff;
+      border-radius: 8px;
+      padding: 4px 8px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      box-shadow: none;
+    }
+    .leaflet-tooltip.sender-tooltip:before {
+      border-top-color: rgba(255,255,255,0.25);
+    }
     .refresh-btn {
       background: rgba(255,255,255,0.1);
       color: #fff;
@@ -356,6 +369,12 @@
         const layers = senderLayers.get(senderId);
         layers.marker.setLatLng(latestLatLng);
         layers.marker.bindPopup(`${senderName}<br>${new Date(latest.timestamp).toLocaleString()}`);
+        layers.marker.bindTooltip(senderName, {
+          permanent: true,
+          direction: 'top',
+          offset: [0, -10],
+          className: 'sender-tooltip',
+        });
         layers.path.setLatLngs(coordinates);
         layers.accuracyCircle.setLatLng(latestLatLng);
         layers.accuracyCircle.setRadius(latest.accuracy || 0);
