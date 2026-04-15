@@ -53,6 +53,29 @@
       margin: 8px;
     }
     .btn-no:hover { background: rgba(255,255,255,0.2); }
+    .name-section {
+      margin-bottom: 18px;
+      text-align: left;
+    }
+    .name-label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 0.86rem;
+      color: rgba(255,255,255,0.78);
+    }
+    .name-input {
+      width: 100%;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+      padding: 12px;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      outline: none;
+    }
+    .name-input::placeholder {
+      color: rgba(255,255,255,0.45);
+    }
     .status {
       margin-top: 25px;
       padding: 15px;
@@ -135,6 +158,11 @@
     <h1>Location Request</h1>
     <p class="subtitle">Someone has requested your live location. If you agree, your browser will keep sending updated coordinates until you stop sharing or close this page.</p>
 
+    <div class="name-section" id="nameSection">
+      <label class="name-label" for="senderName">Enter your name before sharing</label>
+      <input class="name-input" id="senderName" type="text" maxlength="40" placeholder="Your name" autocomplete="name">
+    </div>
+
     <div class="buttons" id="buttons">
       <button class="btn-yes" onclick="shareLocation()">Yes, Share</button>
       <button class="btn-no" onclick="decline()">No Thanks</button>
@@ -159,6 +187,7 @@
 
   <script>
     const linkId = window.location.pathname.split('/').pop();
+    const senderNameInput = document.getElementById('senderName');
     const status = document.getElementById('status');
     const livePanel = document.getElementById('livePanel');
     let watchId = null;
@@ -166,17 +195,33 @@
     let latestPosition = null;
     let updatesSent = 0;
 
+    function getOrCreateSenderId() {
+      const storageKey = `sender_id_${linkId}`;
+      const existingId = localStorage.getItem(storageKey);
+      if (existingId) {
+        return existingId;
+      }
+
+      const newId = (crypto && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      localStorage.setItem(storageKey, newId);
+      return newId;
+    }
+
     async function sendLocation(position) {
       if (!position) {
         return;
       }
 
       const { latitude, longitude, accuracy } = position.coords;
+      const senderName = senderNameInput.value.trim();
+      const senderId = getOrCreateSenderId();
 
       const res = await fetch(`/api/location/${linkId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ latitude, longitude, accuracy }),
+        body: JSON.stringify({ latitude, longitude, accuracy, senderName, senderId }),
       });
 
       if (!res.ok) {
@@ -193,6 +238,14 @@
     }
 
     function shareLocation() {
+      const enteredName = senderNameInput.value.trim();
+      if (!enteredName) {
+        status.className = 'status error';
+        status.textContent = 'Please enter your name to start sharing.';
+        senderNameInput.focus();
+        return;
+      }
+
       status.className = 'status loading';
       status.textContent = 'Starting live location sharing...';
 

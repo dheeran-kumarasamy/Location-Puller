@@ -150,6 +150,12 @@
       color: #a8d8ff;
       margin-bottom: 8px;
     }
+    .sender-name {
+      color: #fff;
+      font-weight: 600;
+      margin-bottom: 6px;
+      font-size: 0.95rem;
+    }
     .accuracy { color: rgba(255,255,255,0.5); font-size: 0.85rem; }
     .map-link {
       display: inline-block;
@@ -215,20 +221,20 @@
       <div class="map-header">
         <div>
           <div class="map-title">Live location map</div>
-          <div class="map-subtitle">The marker moves as new positions arrive from the receiver.</div>
+          <div class="map-subtitle">Each receiver appears as a named pin with their latest location.</div>
         </div>
         <div class="map-actions">
           <button class="map-btn" onclick="focusLatestLocation()">Follow Latest</button>
         </div>
       </div>
-      <div id="mapState" class="map-empty">Waiting for the first live location update...</div>
+      <div id="mapState" class="map-empty">Waiting for the first receiver location update...</div>
       <div id="liveMap" style="display: none;"></div>
     </div>
 
     <button class="refresh-btn" onclick="loadLocations()">Refresh</button>
 
     <div id="locations">
-      <div class="no-data">Waiting for someone to share their location...</div>
+      <div class="no-data">Waiting for receivers to share their location...</div>
     </div>
 
     <p class="auto-refresh">Live map updates every 1 second</p>
@@ -243,10 +249,17 @@
     const linkId = window.location.pathname.split('/').pop();
     document.getElementById('linkId').textContent = linkId;
     let map = null;
-    let latestMarker = null;
-    let accuracyCircle = null;
-    let pathLine = null;
-    let lastRenderedCount = 0;
+    const senderLayers = new Map();
+    let hasInitializedMapBounds = false;
+
+    function getSenderColor(senderId) {
+      let hash = 0;
+      for (let i = 0; i < senderId.length; i += 1) {
+        hash = senderId.charCodeAt(i) + ((hash << 5) - hash);
+      }
+      const hue = Math.abs(hash) % 360;
+      return `hsl(${hue}, 80%, 58%)`;
+    }
 
     function ensureMap() {
       if (map) {
@@ -271,64 +284,97 @@
     }
 
     function focusLatestLocation() {
-      if (!latestMarker || !map) {
+      if (!map || senderLayers.size === 0) {
         return;
       }
 
-      map.flyTo(latestMarker.getLatLng(), Math.max(map.getZoom(), 16), {
-        animate: true,
-        duration: 1.2,
+      const points = [];
+      senderLayers.forEach((layer) => {
+        points.push(layer.marker.getLatLng());
       });
+
+      const bounds = L.latLngBounds(points);
+      map.fitBounds(bounds, { padding: [40, 40] });
     }
 
-    function updateMap(locations) {
-      if (!locations.length) {
+    function updateMap(senders) {
+      const senderEntries = Object.entries(senders || {})
+        .filter(([, senderData]) => senderData && Array.isArray(senderData.locations) && senderData.locations.length > 0);
+
+      if (!senderEntries.length) {
+        if (map) {
+          document.getElementById('mapState').style.display = 'flex';
+          document.getElementById('liveMap').style.display = 'none';
+        }
         return;
       }
 
       const liveMap = ensureMap();
-      const coordinates = locations.map((loc) => [loc.latitude, loc.longitude]);
-      const latest = locations[locations.length - 1];
-      const latestLatLng = [latest.latitude, latest.longitude];
 
-      if (!pathLine) {
-        pathLine = L.polyline(coordinates, {
-          color: '#7c3aed',
-          weight: 4,
-          opacity: 0.9,
-        }).addTo(liveMap);
-      } else {
-        pathLine.setLatLngs(coordinates);
-      }
+      const activeSenderIds = new Set(senderEntries.map(([senderId]) => senderId));
+      senderLayers.forEach((layers, senderId) => {
+        if (!activeSenderIds.has(senderId)) {
+          liveMap.removeLayer(layers.marker);
+          liveMap.removeLayer(layers.path);
+          liveMap.removeLayer(layers.accuracyCircle);
+          senderLayers.delete(senderId);
+        }
+      });
 
-      if (!latestMarker) {
-        latestMarker = L.marker(latestLatLng).addTo(liveMap);
-      } else {
-        latestMarker.setLatLng(latestLatLng);
-      }
+      senderEntries.forEach(([senderId, senderData]) => {
+        const senderName = (senderData.name || 'Unknown').trim() || 'Unknown';
+        const coordinates = senderData.locations.map((loc) => [loc.latitude, loc.longitude]);
+        const latest = senderData.locations[senderData.locations.length - 1];
+        const latestLatLng = [latest.latitude, latest.longitude];
+        const color = getSenderColor(senderId);
 
-      latestMarker.bindPopup(`Latest location<br>${new Date(latest.timestamp).toLocaleString()}`);
+        if (!senderLayers.has(senderId)) {
+          const marker = L.circleMarker(latestLatLng, {
+            radius: 8,
+            color,
+            fillColor: color,
+            fillOpacity: 0.95,
+            weight: 2,
+          }).addTo(liveMap);
 
-      if (!accuracyCircle) {
-        accuracyCircle = L.circle(latestLatLng, {
-          radius: latest.accuracy || 0,
-          color: '#38bdf8',
-          fillColor: '#38bdf8',
-          fillOpacity: 0.16,
-        }).addTo(liveMap);
-      } else {
-        accuracyCircle.setLatLng(latestLatLng);
-        accuracyCircle.setRadius(latest.accuracy || 0);
-      }
+          const path = L.polyline(coordinates, {
+            color,
+            weight: 4,
+            opacity: 0.8,
+          }).addTo(liveMap);
 
-      if (lastRenderedCount === 0) {
-        liveMap.fitBounds(pathLine.getBounds(), { padding: [40, 40] });
-      } else if (locations.length !== lastRenderedCount) {
-        liveMap.panTo(latestLatLng, { animate: true, duration: 1.0 });
+          const accuracyCircle = L.circle(latestLatLng, {
+            radius: latest.accuracy || 0,
+            color,
+            fillColor: color,
+            fillOpacity: 0.12,
+          }).addTo(liveMap);
+
+          senderLayers.set(senderId, { marker, path, accuracyCircle });
+        }
+
+        const layers = senderLayers.get(senderId);
+        layers.marker.setLatLng(latestLatLng);
+        layers.marker.bindPopup(`${senderName}<br>${new Date(latest.timestamp).toLocaleString()}`);
+        layers.path.setLatLngs(coordinates);
+        layers.accuracyCircle.setLatLng(latestLatLng);
+        layers.accuracyCircle.setRadius(latest.accuracy || 0);
+      });
+
+      const allLatestPoints = [];
+      senderLayers.forEach((layers) => {
+        allLatestPoints.push(layers.marker.getLatLng());
+      });
+
+      if (allLatestPoints.length > 0) {
+        const bounds = L.latLngBounds(allLatestPoints);
+        if (!hasInitializedMapBounds) {
+          liveMap.fitBounds(bounds, { padding: [40, 40] });
+          hasInitializedMapBounds = true;
+        }
       }
 
       setTimeout(() => liveMap.invalidateSize(), 0);
-      lastRenderedCount = locations.length;
     }
 
     function getLiveStatus(lastTimestamp) {
@@ -348,12 +394,15 @@
 
         const data = await res.json();
         const container = document.getElementById('locations');
-        const totalUpdates = data.locations.length;
+        const senderEntries = Object.entries(data.senders || {})
+          .map(([senderId, senderData]) => ({ senderId, senderData }))
+          .filter(({ senderData }) => senderData && Array.isArray(senderData.locations) && senderData.locations.length > 0);
+        const totalUpdates = senderEntries.reduce((sum, { senderData }) => sum + senderData.locations.length, 0);
 
         document.getElementById('totalUpdates').textContent = totalUpdates;
 
         if (totalUpdates === 0) {
-          container.innerHTML = '<div class="no-data">Waiting for someone to share their location...</div>';
+          container.innerHTML = '<div class="no-data">Waiting for receivers to share their location...</div>';
           document.getElementById('liveStatus').textContent = 'Waiting';
           document.getElementById('lastUpdateTime').textContent = '--';
           document.getElementById('mapState').style.display = 'flex';
@@ -361,21 +410,36 @@
           return;
         }
 
-        const latest = data.locations[data.locations.length - 1];
-        document.getElementById('liveStatus').textContent = getLiveStatus(latest.timestamp);
-        document.getElementById('lastUpdateTime').textContent = new Date(latest.timestamp).toLocaleTimeString();
-        updateMap(data.locations);
+        const latestEntries = senderEntries
+          .map(({ senderId, senderData }) => {
+            const latest = senderData.locations[senderData.locations.length - 1];
+            return {
+              senderId,
+              senderName: (senderData.name || 'Unknown').trim() || 'Unknown',
+              latest,
+              count: senderData.locations.length,
+            };
+          })
+          .sort((a, b) => new Date(b.latest.timestamp) - new Date(a.latest.timestamp));
 
-        container.innerHTML = [...data.locations].reverse().map((loc, i) => {
-          const time = new Date(loc.timestamp).toLocaleString();
-          const mapsUrl = `https://www.google.com/maps?q=${loc.latitude},${loc.longitude}`;
+        const latestOverall = latestEntries[0].latest;
+        const activeCount = latestEntries.filter((entry) => getLiveStatus(entry.latest.timestamp) === 'Live now').length;
+
+        document.getElementById('liveStatus').textContent = activeCount > 0 ? `${activeCount} active sharer(s)` : 'Idle';
+        document.getElementById('lastUpdateTime').textContent = new Date(latestOverall.timestamp).toLocaleTimeString();
+        updateMap(data.senders || {});
+
+        container.innerHTML = latestEntries.map((entry) => {
+          const time = new Date(entry.latest.timestamp).toLocaleString();
+          const mapsUrl = `https://www.google.com/maps?q=${entry.latest.latitude},${entry.latest.longitude}`;
           return `
             <div class="location-card">
-              <div class="time">#${totalUpdates - i} &mdash; ${time}${i === 0 ? ' <span class="badge">Latest</span>' : ''}</div>
+              <div class="sender-name">${entry.senderName}</div>
+              <div class="time">${time} <span class="badge">${entry.count} update(s)</span></div>
               <div class="coords">
-                Lat: ${loc.latitude.toFixed(6)}, Lng: ${loc.longitude.toFixed(6)}
+                Lat: ${entry.latest.latitude.toFixed(6)}, Lng: ${entry.latest.longitude.toFixed(6)}
               </div>
-              <div class="accuracy">Accuracy: ~${Math.round(loc.accuracy)} meters</div>
+              <div class="accuracy">Accuracy: ~${Math.round(entry.latest.accuracy)} meters</div>
               <a class="map-link" href="${mapsUrl}" target="_blank" rel="noopener">Open in Google Maps</a>
             </div>
           `;

@@ -1,16 +1,13 @@
 const express = require("express");
 const path = require("path");
-const fs = require("fs");
+const crypto = require("crypto");
 const { Redis } = require("@upstash/redis");
 
 const app = express();
 const publicDir = path.join(__dirname, "public");
 const trackingLinks = new Map();
 const FIXED_LINK_ID = process.env.FIXED_LINK_ID || "live-location";
-const ANDROID_APK_URL = process.env.ANDROID_APK_URL || "";
-const IOS_IPA_URL = process.env.IOS_IPA_URL || "";
-const LOCAL_ANDROID_APK_PATH = path.join(publicDir, "downloads", "app.apk");
-const LOCAL_IOS_IPA_PATH = path.join(publicDir, "downloads", "app.ipa");
+const LEGACY_SENDER_ID = "legacy-sender";
 
 const hasRedisConfig = Boolean(
   process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
@@ -33,10 +30,32 @@ async function saveTrackingRecord(linkId, record) {
 
 async function getTrackingRecord(linkId) {
   if (redis) {
-    return (await redis.get(getTrackingKey(linkId))) || null;
+    const record = (await redis.get(getTrackingKey(linkId))) || null;
+    return normalizeTrackingRecord(record);
   }
 
-  return trackingLinks.get(linkId) || null;
+  return normalizeTrackingRecord(trackingLinks.get(linkId) || null);
+}
+
+function normalizeTrackingRecord(record) {
+  if (!record) {
+    return null;
+  }
+
+  if (record.senders && typeof record.senders === "object") {
+    return record;
+  }
+
+  const legacyLocations = Array.isArray(record.locations) ? record.locations : [];
+  return {
+    createdAt: record.createdAt || new Date().toISOString(),
+    senders: {
+      [LEGACY_SENDER_ID]: {
+        name: "Unknown",
+        locations: legacyLocations,
+      },
+    },
+  };
 }
 
 async function ensureTrackingRecord(linkId) {
@@ -47,7 +66,7 @@ async function ensureTrackingRecord(linkId) {
 
   const newRecord = {
     createdAt: new Date().toISOString(),
-    locations: [],
+    senders: {},
   };
 
   await saveTrackingRecord(linkId, newRecord);
@@ -63,27 +82,14 @@ app.use((req, res, next) => {
 
 app.use(express.static(publicDir));
 
+app.get("/", (req, res) => {
+  res.sendFile(path.join(publicDir, "index.html"));
+});
+
 app.get("/api/health", (req, res) => {
   res.json({
     ok: true,
     storage: redis ? "upstash-redis" : "memory",
-  });
-});
-
-app.get("/api/config", (req, res) => {
-  const fallbackAndroidUrl = fs.existsSync(LOCAL_ANDROID_APK_PATH)
-    ? "/downloads/app.apk"
-    : "";
-  const fallbackIosUrl = fs.existsSync(LOCAL_IOS_IPA_PATH)
-    ? "/downloads/app.ipa"
-    : "";
-
-  res.json({
-    fixedLinkId: FIXED_LINK_ID,
-    downloads: {
-      androidApkUrl: ANDROID_APK_URL || fallbackAndroidUrl,
-      iosIpaUrl: IOS_IPA_URL || fallbackIosUrl,
-    },
   });
 });
 
@@ -102,13 +108,37 @@ app.post("/api/create-link", async (req, res) => {
 app.post("/api/location/:linkId", async (req, res) => {
   try {
     const { linkId } = req.params;
-    const { latitude, longitude, accuracy } = req.body;
+    const { latitude, longitude, accuracy, senderName, senderId } = req.body;
     const trackingRecord = linkId === FIXED_LINK_ID
       ? await ensureTrackingRecord(linkId)
       : await getTrackingRecord(linkId);
 
     if (!trackingRecord) {
       return res.status(404).json({ error: "Link not found" });
+    }
+
+    const cleanSenderName = typeof senderName === "string" ? senderName.trim().slice(0, 40) : "";
+    if (!cleanSenderName) {
+      return res.status(400).json({ error: "Sender name is required" });
+    }
+
+    const cleanSenderId = typeof senderId === "string"
+      ? senderId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64)
+      : "";
+
+    if (!cleanSenderId) {
+      return res.status(400).json({ error: "Sender ID is required" });
+    }
+
+    if (!trackingRecord.senders || typeof trackingRecord.senders !== "object") {
+      trackingRecord.senders = {};
+    }
+
+    if (!trackingRecord.senders[cleanSenderId]) {
+      trackingRecord.senders[cleanSenderId] = {
+        name: cleanSenderName,
+        locations: [],
+      };
     }
 
     const entry = {
@@ -119,7 +149,8 @@ app.post("/api/location/:linkId", async (req, res) => {
       ip: req.headers["x-forwarded-for"] || req.ip,
     };
 
-    trackingRecord.locations.push(entry);
+    trackingRecord.senders[cleanSenderId].name = cleanSenderName;
+    trackingRecord.senders[cleanSenderId].locations.push(entry);
     await saveTrackingRecord(linkId, trackingRecord);
 
     res.json({ success: true });
